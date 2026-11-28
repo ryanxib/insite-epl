@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xibs Season Manager</title>
+<style>
+:root{--bg:#fafaf8;--card:#fff;--ink:#1d1d1b;--mute:#6b6b66;--line:#e6e5e0;--acc:#2f5d50;--bad:#b3412e;--good:#2f7a3d;--warn:#a8721a;--chip:#f0efe9}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--card:#1f1f1d;--ink:#ecebe6;--mute:#9a998f;--line:#33322e;--acc:#7fb8a4;--bad:#e07a62;--good:#7cc58a;--warn:#d7a650;--chip:#2a2a27}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+header{padding:12px 14px 4px}h1{font-size:18px;margin:0}.sub{color:var(--mute);font-size:12px}
+.dl{margin:6px 14px 0;padding:6px 10px;border-radius:8px;background:var(--chip);font-size:13px}
+nav{display:flex;gap:6px;overflow-x:auto;padding:8px 14px;position:sticky;top:0;background:var(--bg);z-index:5;border-bottom:1px solid var(--line)}
+nav button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:16px;padding:6px 12px;font-size:13px;white-space:nowrap}
+nav button.on{background:var(--acc);color:var(--bg);border-color:var(--acc)}
+main{padding:10px 14px 40px;max-width:940px;margin:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+.card h2{font-size:15px;margin:0 0 6px}.note{color:var(--mute);font-size:12px;margin:4px 0 8px}
+select,input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);max-width:100%}
+input[type=number]{width:72px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{padding:5px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{color:var(--mute);font-weight:600;font-size:11.5px}th:first-child,td:first-child{text-align:left;white-space:normal}
+.tw{overflow-x:auto}.pos{display:inline-block;min-width:28px;font-size:10.5px;color:var(--mute)}
+.bad{color:var(--bad)}.good{color:var(--good)}.warn{color:var(--warn)}.mute{color:var(--mute)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}.kpi{background:var(--chip);border-radius:8px;padding:8px}.kpi b{display:block;font-size:17px}.kpi span{font-size:11px;color:var(--mute)}
+.chip{display:inline-block;background:var(--chip);border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px}
+tr.sel{background:var(--chip)}tr.click{cursor:pointer}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.tbox{border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px}
+.res{background:var(--chip);border-radius:8px;padding:10px}.res b{font-size:16px}
+</style>
+</head>
+<body>
+<header><div class="sub"><a href="../#season" style="color:var(--acc)">&larr; insite EPL</a></div><h1>Xibs Season Manager</h1><div class="sub" id="meta">Loading…</div></header>
+<div class="dl" id="dl"></div>
+<nav id="tabs"></nav>
+<main id="app"></main>
+<script>
+const TABS=[["entries","My entries"],["gaps","Gaps & pack"],["impact","Transfer impact"],["appeal","Appeal"],["ratings","Ratings"],["top","Top 100"],["fixtures","Fixtures"],["notes","Notes"]];
+const LBL={xibs:"Xibs",mattxibb:"Matt"};
+let D,P={},FX={},E=[],SQ={},MY=[],cur=0,tab="entries",hz=3,FREE=1,RS="custom",T=[{},{},{}],S=[];
+const pct=x=>x==null||isNaN(x)?"–":(Math.round(x*10)/10).toFixed(1)+"%";
+const n1=x=>x==null||x===""||isNaN(x)?"–":(+x).toFixed(1);
+const sg=x=>(x>0?"+":"")+(+x).toFixed(1);
+const posS={goalkeeper:"GK",defender:"DEF",midfielder:"MID",forward:"FWD"},PO={goalkeeper:0,defender:1,midfielder:2,forward:3};
+function load(){fetch("bundle.json").then(r=>r.json()).then(b=>{D=b;prep();initRatings();nav();render();tick();setInterval(tick,30000)}).catch(e=>{document.getElementById("app").innerHTML='<div class="card bad">Could not load data: '+e+'</div>'})}
+function counts(es){const n=es.length,o={},x={},c={};es.forEach(e=>(SQ[e.fid]||[]).forEach(s=>{const id=s[0];o[id]=(o[id]||0)+1;if(!s[2])x[id]=(x[id]||0)+1;if(s[1]==="C")c[id]=(c[id]||0)+1}));
+ const r={n};Object.keys(P).forEach(id=>{r[id]={own:n?100*(o[id]||0)/n:0,eo:n?100*((x[id]||0)+(c[id]||0))/n:0,cap:n?100*(c[id]||0)/n:0}});return r}
+function prep(){
+ D.pool.forEach(p=>P[p.id]=p);D.fixtures.forEach(f=>FX[f.match_id]=f);
+ E=D.entries.slice().sort((a,b)=>a.pos-b.pos);E.forEach(e=>SQ[e.fid]=D.squads[e.fid]||[]);
+ S=D.st.map(r=>r[1]);
+ MY=E.filter(e=>e.grp!=="win").sort((a,b)=>D.groups.indexOf(a.grp)-D.groups.indexOf(b.grp)||a.pos-b.pos);
+ MY.forEach(e=>{const g=MY.filter(x=>x.grp===e.grp);e.lab=(LBL[e.grp]||e.grp)+" #"+(g.indexOf(e)+1)});
+ D.TOP=counts(E.filter(e=>e.pos<=100));
+ Object.values(P).forEach(p=>{const f=FX[p.match_id];if(!f){p.opp="–";return}
+  const home=f.home===p.club;p.opp=home?f.away:f.home.toLowerCase();p.ha=home?"H":"A";
+  const xa=+(home?f.xg_away:f.xg_home);p.cs=100*Math.exp(-xa)});
+ document.getElementById("meta").textContent=D.name+" · "+D.entrants+" entrants · squads as of GW"+D.squad_round+" · next GW"+D.next_round+" · pulled "+D.pulled}
+function tick(){const k=Math.min(...D.fixtures.map(f=>+new Date(f.kickoff)));const ms=k-Date.now();
+ document.getElementById("dl").innerHTML=ms>0?'GW'+D.next_round+' deadline (first kick-off) in <b>'+Math.floor(ms/36e5)+'h '+Math.floor(ms%36e5/6e4)+'m</b>':'GW'+D.next_round+' deadline passed. Re-run the pull with round '+D.next_round+' to see this week\'s squads.'}
+function nav(){document.getElementById("tabs").innerHTML=TABS.map(([k,l])=>'<button data-t="'+k+'" class="'+(k===tab?"on":"")+'">'+l+'</button>').join("");
+ document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;nav();render();window.scrollTo(0,0)})}
+function entrySel(){return '<div class="row"><select id="esel">'+MY.map((e,i)=>'<option value="'+i+'"'+(i===cur?" selected":"")+'>'+e.lab+' · rank '+e.rank+' · '+e.score+' pts</option>').join("")+'</select></div>'}
+function bindRS(){const r=document.getElementById("rs");if(r)r.onchange=()=>{RS=r.value;render()}}
+function bindSel(){const s=document.getElementById("esel");if(s)s.onchange=()=>{cur=+s.value;T=[{},{},{}];render()}}
+function me(){return MY[cur]}
+function pack(e){return E.filter(x=>x.pos<e.pos&&x.pos>=e.pos-D.window)}
+function squad(e){return SQ[e.fid].map(s=>Object.assign({},P[s[0]]||{id:s[0],name:"?"+s[0],club:"",price:0},{cap:s[1],bench:s[2]}))}
+function places(score,x){if(x===0)return 0;let n=0;if(x>0){for(const v of S)if(v>score&&v<=score+x)n++;return n}for(const v of S)if(v<=score&&v>score+x)n++;return -n}
+function prow(p,extra){return '<td><span class="pos">'+(posS[p.pos]||"")+'</span>'+p.name+' <span class="mute">'+p.club+'</span>'+(extra||"")+'</td>'}
+function fix(p){return !p.opp||p.opp==="–"?'<td class="mute">no game</td>':'<td>'+p.opp+' ('+p.ha+')</td>'}
+function gapc(x){return '<td class="'+(x>0?"bad":"good")+'">'+(x>0?"+":"")+x.toFixed(1)+'</td>'}
+
+const att=p=>p.pos==="midfielder"||p.pos==="forward";
+const RLAB={custom:"Custom (editable, saved)",calib:"Calibrated: home/away split (xG GW1-10)",calib_pooled:"Calibrated: pooled (xG GW1-10)",mine:"My ratings (15 Aug)",cons:"Consensus (FFS projections, Aug)"};
+let DB=null,SAVED=null;
+let RAT={},FXI={};
+const mult=(r,t)=>{const f=r-Math.floor(r),i=Math.min(Math.floor(r)-1,3);return f===0?t[Math.min(Math.floor(r)-1,4)]:t[i]+(t[i+1]-t[i])*f};
+function lamFor(T,c,o,home){const a=T[c],d=T[o];if(!a||!d)return null;const r=D.ratings;return home?r.league_home*mult(a.aH,r.att_scale)*mult(d.dA,r.def_scale):r.league_away*mult(a.aA,r.att_scale)*mult(d.dH,r.def_scale)}
+function tk(club,gw){const f=FXI[gw]&&FXI[gw][club];if(!f)return null;const T=RAT[RS],lf=lamFor(T,club,f.opp,f.home),la=lamFor(T,f.opp,club,!f.home);return{opp:f.home?f.opp:f.opp.toLowerCase(),h:f.home,lf,la,cs:100*Math.exp(-la)}}
+function initRatings(){const r=D.ratings;RAT={calib:r.calib,calib_pooled:r.calib_pooled,mine:r.mine,cons:r.cons};let c=null;try{c=JSON.parse(localStorage.getItem("xibs_custom_ratings"))}catch(_){}
+ RAT.custom=JSON.parse(JSON.stringify(c&&c.ARS?c:(r.custom&&r.custom.R)||r.calib));
+ if(window.claude&&claude.use)claude.use("db").then(db=>{if(!db)return;DB=db;return db.doc("ratings/custom").get().then(d=>{if(d.exists){const v=d.data();SAVED=v.savedAt;if(v.R&&v.R.ARS&&!(c&&c.ARS&&c._t>v.t)){RAT.custom=JSON.parse(JSON.stringify(v.R))}}render()})}).catch(()=>{});D.fx8.forEach(([g,h,a])=>{(FXI[g]=FXI[g]||{})[h]={opp:a,home:true};FXI[g][a]={opp:h,home:false}})}
+function saveCustom(){try{RAT.custom._t=Date.now();localStorage.setItem("xibs_custom_ratings",JSON.stringify(RAT.custom))}catch(_){}}
+async function saveStore(btn){if(!DB){btn.textContent="Store not available here";return}btn.textContent="Saving...";const R={};Object.keys(RAT.mine).forEach(c=>R[c]=Object.assign({},RAT.custom[c]));const t=Date.now();
+ try{await DB.doc("ratings/custom").set({R,t,savedAt:new Date(t).toISOString(),basis:"edited in Xibs Season Manager"});SAVED=new Date(t).toISOString();btn.textContent="Saved "+SAVED.slice(11,16)+" UTC"}catch(e){btn.textContent="Save failed: "+(e&&e.code||e)}}
+function tone(v,a){if(v==null)return"";const[m,h]=a?[1.07,1.41]:[24.4,34.3];return v>=h?"rgba(16,185,129,.28)":v>=m?"rgba(245,158,11,.26)":"rgba(244,63,94,.22)"}
+function runVal(p,n){let s=0,c=0;for(let g=D.next_round;g<D.next_round+n;g++){const x=tk(p.club,g);if(x){s+=att(p)?x.lf:x.cs;c++}}return c?s/c:null}
+function runTxt(v,a){return v==null?"–":a?v.toFixed(2):Math.round(v)+"%"}
+function rsSel(){return '<select id="rs">'+Object.keys(RLAB).map(k=>'<option value="'+k+'"'+(RS===k?" selected":"")+'>'+RLAB[k]+'</option>').join("")+'</select>'}
+function rRun(sq){const g0=D.next_round,N=6;let h='<div class="card"><h2>Fixture run, next '+N+' GW</h2><p class="note">From the 1-5 attack/defence ratings. Attackers (MID/FWD): club expected goals. GK/DEF: clean sheet chance. Green = top third of fixtures, amber = middle, red = bottom third. Ratings: '+rsSel()+' <span class="mute">(edit them in the Ratings tab)</span></p><div class="tw"><table><tr><th>Player</th>';
+ for(let g=g0;g<g0+N;g++)h+='<th>GW'+g+'</th>';h+='<th>Avg</th></tr>';
+ sq.forEach(p=>{const a=att(p);h+='<tr'+(p.bench?' class="mute"':'')+'>'+prow(p);
+  for(let g=g0;g<g0+N;g++){const x=tk(p.club,g);h+=x?'<td style="background:'+tone(a?x.lf:x.cs,a)+'">'+x.opp+(x.h?" (H) ":" (A) ")+runTxt(a?x.lf:x.cs,a)+'</td>':'<td class="mute">blank</td>'}
+  const v=runVal(p,N);h+='<td style="background:'+tone(v,a)+'"><b>'+runTxt(v,a)+'</b></td></tr>'});
+ return h+'</table></div></div>'}
+function rRatings(){const g0=D.next_round,N=6,cl=Object.keys(RAT.mine).sort(),r=D.ratings,st=r.calib_stats||{};
+ const sel=(c,f)=>'<select data-c="'+c+'" data-f="'+f+'" class="rsel">'+[1,1.5,2,2.5,3,3.5,4,4.5,5].map(v=>'<option'+(RAT.custom[c][f]===v?" selected":"")+' value="'+v+'">'+v+'</option>').join("")+'</select>';
+ let h='<div class="card"><h2>Ratings</h2><p class="note">1-5 for each club: attack (att) higher = scores more, defence (def) LOWER = tighter. Used for the Fixture run and the Run column in Transfer impact. Active set: '+rsSel()+'</p>'+
+ '<div class="row"><button id="cpcal">Custom = Calibrated split</button> <button id="cppool">Custom = Calibrated pooled</button> <button id="cpmine">Custom = My 15 Aug</button> <button id="cpcons">Custom = Consensus</button> <button id="svstore"><b>Save custom</b></button> <button id="cpjson">Copy as JSON</button></div><p class="note">Last saved: '+(SAVED?SAVED.slice(0,16).replace("T"," ")+" UTC":"not yet")+'. Save keeps the custom set in this page\'s own store (works on any device). Then ask Claude to "sync ratings" to copy it into the repo.</p>'+
+ '<p class="note">'+(r.calib_note||"")+' Calibration test: fitting on xG improved next-week goal predictions slightly; fitting on goals alone made them worse. See data/ratings/calibration.md. Consensus = Fantasy Football Scout projected goals per club per GW (August), turned into 1-5 ratings; it is not based on results.</p></div>';
+ h+='<div class="card"><h2>Edit custom ratings</h2><div class="tw"><table><tr><th>Club</th><th>GF</th><th>xGF</th><th>GA</th><th>xGA</th><th>att H</th><th>att A</th><th>def H</th><th>def A</th><th>Calib</th></tr>'+
+ cl.map(c=>{const s=st[c]||{},k=r.calib[c],m=r.mine[c];return '<tr><td>'+c+'</td><td>'+(s.gf??"–")+'</td><td>'+(s.xgf??"–")+'</td><td>'+(s.ga??"–")+'</td><td>'+(s.xga??"–")+'</td><td>'+sel(c,"aH")+'</td><td>'+sel(c,"aA")+'</td><td>'+sel(c,"dH")+'</td><td>'+sel(c,"dA")+'</td><td class="mute">'+[k.aH,k.aA,k.dH,k.dA].join(" ")+'</td></tr>'}).join("")+'</table></div><p class="note">GF/GA = goals for/against and xGF/xGA = expected goals for/against, GW1-10 (FPL data). Calib column = the calibrated numbers (att H, att A, def H, def A).</p></div>';
+ const ticker=(a)=>'<div class="tw"><table><tr><th>Club</th>'+Array.from({length:N},(_,i)=>'<th>GW'+(g0+i)+'</th>').join("")+'<th>Avg</th></tr>'+cl.map(c=>{let s=0,n=0;const tds=Array.from({length:N},(_,i)=>{const x=tk(c,g0+i);if(!x)return'<td class="mute">–</td>';const v=a?x.lf:x.cs;s+=v;n++;return'<td style="background:'+tone(v,a)+'">'+x.opp+(x.h?"(H) ":"(A) ")+runTxt(v,a)+'</td>'}).join("");return'<tr><td>'+c+'</td>'+tds+'<td style="background:'+tone(n?s/n:null,a)+'"><b>'+runTxt(n?s/n:null,a)+'</b></td></tr>'}).join("")+'</table></div>';
+ h+='<div class="card"><h2>Attack ticker (club expected goals)</h2>'+ticker(true)+'</div><div class="card"><h2>Defence ticker (clean sheet chance)</h2>'+ticker(false)+'</div>';return h}
+function bindRatings(){const g=(s,f)=>document.querySelectorAll(s).forEach(f);
+ g(".rsel",s=>s.onchange=()=>{RAT.custom[s.dataset.c][s.dataset.f]=+s.value;RS="custom";saveCustom();keep()});
+ const cp=(id,src)=>{const b=document.getElementById(id);if(b)b.onclick=()=>{RAT.custom=JSON.parse(JSON.stringify(RAT[src]));RS="custom";saveCustom();keep()}};cp("cpcal","calib");cp("cppool","calib_pooled");cp("cpmine","mine");cp("cpcons","cons");
+ const sv=document.getElementById("svstore");if(sv)sv.onclick=()=>saveStore(sv);const j=document.getElementById("cpjson");if(j)j.onclick=()=>{try{navigator.clipboard.writeText(JSON.stringify(RAT.custom));j.textContent="Copied"}catch(_){j.textContent="Copy blocked: select manually"}}}
+let AP={pos:"all",max:15,minApps:4,sort:"a3",K:5,w:0.6};
+function oppMult(club,g,isAtt){const f=FXI[g]&&FXI[g][club];if(!f)return null;const o=RAT[RS][f.opp];if(!o)return null;const r=D.ratings;
+ if(isAtt){return(f.home?r.league_home:r.league_away)*mult(f.home?o.dA:o.dH,r.def_scale)}
+ return Math.exp(-(f.home?r.league_away:r.league_home)*mult(f.home?o.aA:o.aH,r.att_scale))}
+const EB={};
+function easeBase(isAtt,n){const k=RS+isAtt+n+D.next_round+JSON.stringify(RAT[RS]).length;if(EB[k]!=null)return EB[k];let s=0,c=0;Object.keys(RAT[RS]).forEach(cl=>{for(let g=D.next_round;g<D.next_round+n;g++){const m=oppMult(cl,g,isAtt);if(m!=null){s+=m;c++}}});return EB[k]=c?s/c:1}
+let CPA=null;
+function clubPos(){if(CPA)return CPA;const t={};Object.values(P).forEach(p=>{if(!p.apps)return;const k=p.club+"|"+p.pos;(t[k]=t[k]||{s:0,a:0});t[k].s+=p.total_pts;t[k].a+=p.apps});const o={};Object.keys(t).forEach(k=>o[k]=t[k].s/t[k].a);return CPA=o}
+function appeal(p,n){const a=att(p);let s=0,c=0;for(let g=D.next_round;g<D.next_round+n;g++){const m=oppMult(p.club,g,a);if(m==null)continue;s+=m;c++}
+ const raw=p.apps?p.total_pts/p.apps:null,cp=clubPos()[p.club+"|"+p.pos];let st=null;if(raw!=null){st=cp==null?raw:(p.apps*raw+AP.K*cp)/(p.apps+AP.K)}
+ const e=c?(s/c)/easeBase(a,n):null,idx=e==null?null:Math.pow(e,AP.w);return{ppg:raw,st,idx,ap:st!=null&&idx!=null?st*idx:null}}
+function rAppeal(){const e=me(),PC=counts(pack(e)),mine=new Set(SQ[e.fid].map(s=>s[0]));
+ let rows=Object.values(P).filter(p=>p.apps>=AP.minApps&&p.price<=AP.max&&(AP.pos==="all"||p.pos===AP.pos)&&p.status!=="injured").map(p=>Object.assign({},p,{x3:appeal(p,3),x6:appeal(p,6)}));
+ const key={a3:p=>p.x3.ap,a6:p=>p.x6.ap,ppg:p=>p.x3.st,s3:p=>p.x3.idx,s6:p=>p.x6.idx}[AP.sort];rows.sort((a,b)=>(key(b)??-99)-(key(a)??-99));rows=rows.slice(0,80);
+ const o=(v,l,cur)=>'<option value="'+v+'"'+(cur==v?" selected":"")+'>'+l+'</option>';
+ const ec=v=>v==null?"":v>=1.08?"good":v<=0.92?"bad":"";
+ let h=entrySel()+'<div class="card"><h2>Player appeal</h2><p class="note"><b>Steady rate</b> = FanTeam points per appearance, pulled toward the average for that club and position. The fewer appearances, the bigger the pull. <b>Ease</b> = 1.0 for an average run. GK/DEF: chance the opponent scores little, from the opponent ATTACK rating (clean-sheet maths, not a plain sum). MID/FWD: opponent DEFENCE multiplier. Home or away rating used. <b>Appeal</b> = Steady rate x Ease.</p>'+
+ '<div class="row">Pos <select id="apos">'+o("all","All",AP.pos)+o("goalkeeper","GK",AP.pos)+o("defender","DEF",AP.pos)+o("midfielder","MID",AP.pos)+o("forward","FWD",AP.pos)+'</select> Max price <input type="number" id="amax" step="0.5" value="'+AP.max+'"> Min apps <input type="number" id="aapp" value="'+AP.minApps+'"> Pull strength (apps) <input type="number" id="ak" step="1" min="0" value="'+AP.K+'"> Ease weight <input type="number" id="aw" step="0.1" min="0" max="1.5" value="'+AP.w+'"> Sort <select id="asort">'+o("a3","Appeal 3 GW",AP.sort)+o("a6","Appeal 6 GW",AP.sort)+o("ppg","Steady rate",AP.sort)+o("s3","Easiest 3 GW",AP.sort)+o("s6","Easiest 6 GW",AP.sort)+'</select> Ratings '+rsSel()+'</div>'+
+ '<div class="tw"><table><tr><th>Player</th><th>Price</th><th>Apps</th><th>Pts/app</th><th>Steady</th><th>Ease 3</th><th>Appeal 3</th><th>Ease 6</th><th>Appeal 6</th><th>Pack own</th><th>Field own</th></tr>'+
+ rows.map(p=>'<tr'+(mine.has(p.id)?' class="sel"':'')+'>'+prow(p,mine.has(p.id)?'<span class="chip">yours</span>':'')+'<td>'+n1(p.price)+'</td><td>'+p.apps+(p.starts!=null?' <span class="mute">('+p.starts+')</span>':'')+'</td><td>'+n1(p.x3.ppg)+'</td><td>'+n1(p.x3.st)+'</td><td class="'+ec(p.x3.idx)+'">'+(p.x3.idx==null?"–":p.x3.idx.toFixed(2))+'</td><td><b>'+n1(p.x3.ap)+'</b></td><td class="'+ec(p.x6.idx)+'">'+(p.x6.idx==null?"–":p.x6.idx.toFixed(2))+'</td><td><b>'+n1(p.x6.ap)+'</b></td><td>'+pct((PC[p.id]||{}).own)+'</td><td>'+pct(p.owned)+'</td></tr>').join("")+'</table></div>'+
+ '<p class="note">Apps (starts). Ease weight 0.6 because the GW1-10 data shows fixtures move points about 60% as much as the raw rating scale implies (about +0.3 pts per appearance per rating point). Set 1.0 for the full scale. Steady rate still includes sub cameos. Ratings only change Ease, so editing them on the Ratings tab moves this ranking. Highlighted = in the selected entry.</p></div>';return h}
+function bindAppeal(){const v=id=>document.getElementById(id);const on=(id,f)=>{const x=v(id);if(x)x.onchange=()=>{f(x.value);keep()}};
+ on("apos",x=>AP.pos=x);on("amax",x=>AP.max=+x);on("aapp",x=>AP.minApps=+x);on("ak",x=>AP.K=+x);on("aw",x=>AP.w=+x);on("asort",x=>AP.sort=x)}
+
+function keep(){const y=window.scrollY;render();window.scrollTo(0,y)}
+function rEntries(){
+ const e=me(),sq=squad(e).sort((a,b)=>a.bench-b.bench||PO[a.pos]-PO[b.pos]),pk=pack(e),PC=counts(pk),c=D.cash;
+ let h=entrySel();
+ h+='<div class="card"><div class="kpis">'+
+ '<div class="kpi"><b>'+e.rank+'</b><span>rank of '+D.entrants+'</span></div>'+
+ '<div class="kpi"><b class="'+(e.score>=c.score?"good":"bad")+'">'+sg(e.score-c.score)+'</b><span>v cash line ('+c.score+')</span></div>'+
+ '<div class="kpi"><b class="'+(e.score>=c.p500?"good":"bad")+'">'+sg(e.score-c.p500)+'</b><span>v 500th ('+c.p500+')</span></div>'+
+ '<div class="kpi"><b class="'+(e.score>=c.p100?"good":"bad")+'">'+sg(e.score-c.p100)+'</b><span>v 100th ('+c.p100+')</span></div>'+
+ '<div class="kpi"><b>'+n1(e.funds)+'m</b><span>bank</span></div>'+
+ '<div class="kpi"><b>'+(e.wc&&e.wc.length?"used":"available")+'</b><span>wildcard GW1-19</span></div></div>'+
+ '<p class="note">Cash line = last paid place (rank '+c.rank+', '+c.paid+' paid). Squad as of GW'+D.squad_round+'; '+pk.length+' pack squads loaded (the '+D.window+' places above).</p></div>';
+ h+='<div class="card"><h2>Squad</h2><p class="note">Pack = the '+D.window+' entries ranked just above this one. Pack own = % of them holding the player. Top-100 EO = effective ownership (XI, captain counts twice).</p><div class="tw"><table><tr><th>Player</th><th>Price</th><th>Form</th><th>Pts</th><th>GW11</th><th>Field own</th><th>Pack own</th><th>Top-100 EO</th></tr>'+
+ sq.map(p=>'<tr'+(p.bench?' class="mute"':'')+'>'+prow(p,(p.cap==="C"?'<span class="chip">C</span>':p.cap==="V"?'<span class="chip">V</span>':'')+(p.bench?'<span class="chip">bench</span>':''))+'<td>'+n1(p.price)+(p.prev_price&&p.price!==p.prev_price?(p.price>p.prev_price?' <span class="good">▲</span>':' <span class="bad">▼</span>'):'')+'</td><td>'+n1(p.form)+'</td><td>'+n1(p.total_pts)+'</td>'+fix(p)+'<td>'+pct(p.owned)+'</td><td>'+pct((PC[p.id]||{}).own)+'</td><td>'+pct(D.TOP[p.id]&&D.TOP[p.id].eo)+'</td></tr>').join("")+'</table></div></div>';
+ h+=rRun(sq.filter(x=>x.id));
+ const grp=MY.filter(m=>m.grp===e.grp),cnt={};grp.forEach(m=>SQ[m.fid].forEach(s=>cnt[s[0]]=(cnt[s[0]]||0)+1));
+ const rows=Object.keys(cnt).map(id=>Object.assign({n:cnt[id]},P[id])).sort((a,b)=>b.n-a.n||b.owned-a.owned);
+ h+='<div class="card"><h2>All '+grp.length+' '+(LBL[e.grp]||e.grp)+' entries: exposure</h2><div class="tw"><table><tr><th>Player</th><th>Held</th><th>Top-100 own</th><th>Field own</th></tr>'+
+ rows.map(p=>'<tr>'+prow(p)+'<td>'+p.n+'/'+grp.length+'</td><td>'+pct(D.TOP[p.id]&&D.TOP[p.id].own)+'</td><td>'+pct(p.owned)+'</td></tr>').join("")+'</table></div></div>';
+ return h}
+
+function rGaps(){
+ const e=me(),c=D.cash,pk=pack(e),PC=counts(pk),ids=new Set(SQ[e.fid].map(s=>s[0]));
+ const top=pk.length?pk[0].score:null,near=pk.length?pk[pk.length-1].score:null;
+ let h='<div class="card"><h2>Points gaps, all entries</h2><p class="note">Plus = you are behind (points to catch up). Minus = you are ahead. "Pack top" = the entry '+D.window+' places above you.</p><div class="tw"><table><tr><th>Entry</th><th>Rank</th><th>Pts</th><th>Cash line</th><th>500th</th><th>100th</th><th>Pack top</th><th>Next above</th></tr>'+
+ MY.map(m=>{const pk2=pack(m),t=pk2.length?pk2[0].score-m.score:null,n=pk2.length?pk2[pk2.length-1].score-m.score:null;return '<tr><td>'+m.lab+'</td><td>'+m.rank+'</td><td>'+m.score+'</td>'+gapc(c.score-m.score)+gapc(c.p500-m.score)+gapc(c.p100-m.score)+(t==null?'<td>–</td>':gapc(t))+(n==null?'<td>–</td>':gapc(n))+'</tr>'}).join("")+'</table></div>'+
+ '<p class="note">Rank value of points near '+e.lab+': about '+(places(e.score,10)/10).toFixed(1)+' places per point going up.</p></div>';
+ h+=entrySel();
+ const thr=Object.keys(PC).filter(id=>id!=="n"&&!ids.has(+id)&&PC[id].own>=20).sort((a,b)=>PC[b].own-PC[a].own).map(id=>P[id]).filter(Boolean);
+ h+='<div class="card"><h2>Catch-up list for '+e.lab+'</h2><p class="note">Held by 20%+ of the '+pk.length+' entries above you, not by you. If they score and you don\'t have them, you fall further behind. Not a buy list: pick on points, use this to see the risk.</p><div class="tw"><table><tr><th>Player</th><th>Price</th><th>Form</th><th>GW11</th><th>Pack own</th><th>Pack EO</th><th>Field own</th></tr>'+
+ thr.map(p=>'<tr>'+prow(p)+'<td>'+n1(p.price)+'</td><td>'+n1(p.form)+'</td>'+fix(p)+'<td class="bad">'+pct(PC[p.id].own)+'</td><td>'+pct(PC[p.id].eo)+'</td><td>'+pct(p.owned)+'</td></tr>').join("")+(thr.length?'':'<tr><td colspan=7 class="mute">None above 20%.</td></tr>')+'</table></div></div>';
+ const dif=squad(e).filter(p=>(PC[p.id]||{own:0}).own<10).sort((a,b)=>(PC[a.id]||{own:0}).own-(PC[b.id]||{own:0}).own);
+ h+='<div class="card"><h2>Your differentials v the pack</h2><p class="note">Yours, held by under 10% of the pack. These move you against them when they score.</p><div class="tw"><table><tr><th>Player</th><th>Form</th><th>GW11</th><th>Pack own</th><th>Field own</th></tr>'+
+ dif.map(p=>'<tr>'+prow(p)+'<td>'+n1(p.form)+'</td>'+fix(p)+'<td class="good">'+pct((PC[p.id]||{}).own)+'</td><td>'+pct(p.owned)+'</td></tr>').join("")+(dif.length?'':'<tr><td colspan=5 class="mute">None.</td></tr>')+'</table></div></div>';
+ const buy={},sell={};pk.forEach(x=>(x.tr||[]).forEach(t=>{if(t[0])buy[t[0]]=(buy[t[0]]||0)+1;if(t[1])sell[t[1]]=(sell[t[1]]||0)+1}));
+ const li=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([id,n])=>{const p=P[id]||{name:id,club:""};return '<tr><td>'+p.name+' <span class="mute">'+p.club+'</span></td><td>'+n+'</td></tr>'}).join("")||'<tr><td class="mute">none</td></tr>';
+ h+='<div class="card"><h2>What the pack did in GW'+D.squad_round+'</h2><div class="kpis"><div><b>Bought</b><table>'+li(buy)+'</table></div><div><b>Sold</b><table>'+li(sell)+'</table></div></div></div>';
+ return h}
+
+function candidates(e,o,sq,spent){
+ const ids=new Set(sq.map(p=>p.id));
+ return Object.values(P).filter(p=>p.pos===o.pos&&!ids.has(p.id)&&p.status!=="injured").sort((a,b)=>(b.form||0)-(a.form||0))}
+function rImpact(){
+ const e=me(),sq=squad(e),PC=counts(pack(e)),free=FREE;
+ let h=entrySel();
+ h+='<div class="card"><h2>Transfer impact</h2><p class="note">Pick up to 3 swaps. Edge = points you expect the player coming in to score MORE than the one going out, over the horizon. It starts at the FanTeam form difference × horizon. That is a rough guess, not a projection: overwrite it with your own view.</p>'+
+ '<div class="row">Horizon <select id="hz">'+[1,3,6].map(x=>'<option'+(x===hz?" selected":"")+' value="'+x+'">'+x+' GW</option>').join("")+'</select> Free transfers <input type="number" min="0" max="5" id="fr" value="'+FREE+'" style="width:52px"> <span class="mute">(set it: roll-over not confirmed) · bank '+n1(e.funds)+'m · extra transfers cost '+D.rules.transferPenalty+' pts each</span></div>';
+ const used=[];let bank=+e.funds||0,edgeSum=0,nT=0,errs=[],clubs={};sq.forEach(p=>clubs[p.club]=(clubs[p.club]||0)+1);const inIds=new Set();
+ T.forEach((t,i)=>{
+  const o=t.out?P[t.out]:null;let c=[];if(o){c=candidates(e,o,sq);if(t.q)c=c.filter(p=>(p.name+" "+p.first+" "+p.club).toLowerCase().includes(t.q.toLowerCase()))}
+  const n=t.inn?P[t.inn]:null;
+  h+='<div class="tbox"><b>Swap '+(i+1)+'</b><div class="row"><select data-i="'+i+'" class="osel"><option value="">Sell…</option>'+sq.slice().sort((a,b)=>PO[a.pos]-PO[b.pos]).map(p=>'<option value="'+p.id+'"'+(+t.out===p.id?" selected":"")+'>'+(posS[p.pos])+' '+p.name+' '+p.club+' '+n1(p.price)+'</option>').join("")+'</select>'+
+  (o?' <input data-i="'+i+'" class="qin" id="q'+i+'" placeholder="search buy" value="'+(t.q||"")+'"> <select data-i="'+i+'" class="nsel"><option value="">Buy…</option>'+c.slice(0,60).map(p=>'<option value="'+p.id+'"'+(+t.inn===p.id?" selected":"")+'>'+p.name+' '+p.club+' '+n1(p.price)+' f'+n1(p.form)+'</option>').join("")+'</select>':'')+'</div>';
+  if(o&&n){
+   nT++;bank+= +o.price-+n.price;clubs[o.club]--;clubs[n.club]=(clubs[n.club]||0)+1;
+   if(inIds.has(n.id))errs.push("Swap "+(i+1)+": same player bought twice");inIds.add(n.id);
+   const auto=((n.form||0)-(o.form||0))*hz,edge=t.edge!=null?t.edge:auto;edgeSum+=edge;
+   h+='<div class="row">Edge pts <input type="number" step="0.5" data-i="'+i+'" class="ein" value="'+(Math.round(edge*10)/10)+'"> <span class="mute">auto '+sg(auto)+'</span></div>'+
+   '<div class="tw"><table><tr><th></th><th>Price</th><th>Form</th><th>GW11</th><th>CS</th><th>Run '+hz+'GW</th><th>Pack own</th><th>Top-100 EO</th><th>Lineup</th></tr>'+
+   [o,n].map((p,k)=>'<tr><td>'+(k?"IN ":"OUT ")+p.name+' <span class="mute">'+p.club+'</span></td><td>'+n1(p.price)+'</td><td>'+n1(p.form)+'</td>'+fix(p).replace(/^<td/,'<td')+'<td>'+(p.cs?Math.round(p.cs)+"%":"–")+'</td><td style="background:'+tone(runVal(p,hz),att(p))+'">'+runTxt(runVal(p,hz),att(p))+'</td><td>'+pct((PC[p.id]||{}).own)+'</td><td>'+pct(D.TOP[p.id]&&D.TOP[p.id].eo)+'</td><td class="'+(p.lineup==="expected"||p.lineup==="confirmed"?"":"warn")+'">'+(p.lineup||"")+'</td></tr>').join("")+'</table></div>';
+  }else if(o||n)errs.push("Swap "+(i+1)+" is incomplete");
+  h+='</div>'});
+ Object.keys(clubs).forEach(k=>{if(clubs[k]>D.rules.maxPlayersPerTeam)errs.push("More than "+D.rules.maxPlayersPerTeam+" from "+k)});
+ if(bank<-1e-9)errs.push("Over budget by "+(-bank).toFixed(1)+"m");
+ const hits=Math.max(0,nT-free)*D.rules.transferPenalty,net=edgeSum-hits,after=e.score+net;
+ if(nT){const pl=places(e.score,net),c=D.cash;
+  h+='<div class="res"><b>'+(net>=0?"+":"")+net.toFixed(1)+' pts net</b> over '+hz+' GW ('+sg(edgeSum)+' edge, −'+hits+' for '+Math.max(0,nT-free)+' extra transfer'+(nT-free===1?"":"s")+')<br>'+
+  'Rough rank effect: <b>'+(pl>=0?"up ":"down ")+Math.abs(pl)+' places</b> (from '+e.rank+' to about '+Math.max(1,e.rank-pl)+') if the edge lands and everyone else scores level.<br>'+
+  'Bank after: '+bank.toFixed(1)+'m · v cash line: '+gapc(c.score-after).replace(/<\/?td[^>]*>/g,"")+' · v 500th: '+gapc(c.p500-after).replace(/<\/?td[^>]*>/g,"")+' · v 100th: '+gapc(c.p100-after).replace(/<\/?td[^>]*>/g,"")+
+  (errs.length?'<br><span class="bad">'+errs.join(" · ")+'</span>':'<br><span class="good">Valid: budget, club limit, positions.</span>')+'</div>'+
+  '<p class="note">Places use today\'s points spread (how many entries sit between your score and score + net). It ignores that others also score and that your players\' points are variable. Check Pack own: a high number means you are matching the pack (low upside, low risk). A low number is a differential (the pack moves against you if it works).</p>'}
+ else h+='<p class="note">Choose a player to sell and one to buy.</p>';
+ return h+'</div>'}
+function bindImpact(){
+ const g=(s,f)=>document.querySelectorAll(s).forEach(f);
+ const fr=document.getElementById("fr");if(fr)fr.onchange=()=>{FREE=Math.max(0,+fr.value||0);render()};const hzs=document.getElementById("hz");if(hzs)hzs.onchange=()=>{hz=+hzs.value;T.forEach(t=>t.edge=null);render()};
+ g(".osel",s=>s.onchange=()=>{const t=T[+s.dataset.i];t.out=s.value?+s.value:null;t.inn=null;t.q="";t.edge=null;render()});
+ g(".nsel",s=>s.onchange=()=>{const t=T[+s.dataset.i];t.inn=s.value?+s.value:null;t.edge=null;render()});
+ g(".qin",s=>s.onchange=()=>{const t=T[+s.dataset.i];t.q=s.value;render();const q=document.getElementById("q"+s.dataset.i);if(q)q.focus()});
+ g(".ein",s=>s.onchange=()=>{T[+s.dataset.i].edge=+s.value;render()})}
+
+function rTop(){
+ const t=Object.values(P).filter(p=>D.TOP[p.id]&&D.TOP[p.id].own>0).sort((a,b)=>D.TOP[b.id].eo-D.TOP[a.id].eo).slice(0,40);
+ let h='<div class="card"><h2>What the top 100 hold</h2><p class="note">GW'+D.squad_round+' squads. Gap = top-100 own minus field own.</p><div class="tw"><table><tr><th>Player</th><th>Top-100 own</th><th>EO</th><th>Capt</th><th>Field own</th><th>Gap</th></tr>'+
+ t.map(p=>{const x=D.TOP[p.id],g=x.own-p.owned;return '<tr>'+prow(p)+'<td>'+pct(x.own)+'</td><td>'+pct(x.eo)+'</td><td>'+pct(x.cap)+'</td><td>'+pct(p.owned)+'</td><td class="'+(g>15?"good":g<-15?"bad":"")+'">'+sg(g)+'</td></tr>'}).join("")+'</table></div></div>';
+ h+='<div class="card"><h2>Leaderboard</h2><table><tr><th>Rank</th><th>Entry</th><th>Pts</th></tr>'+D.standings_top.map(r=>'<tr><td>'+r.rank+'</td><td>'+r.name+'</td><td>'+r.score+'</td></tr>').join("")+'</table></div>';return h}
+function rFix(){const f=D.fixtures.slice().sort((a,b)=>a.kickoff<b.kickoff?-1:1);
+ return '<div class="card"><h2>GW'+D.next_round+' fixtures</h2><p class="note">xG is FanTeam\'s expected goals. CS = clean sheet chance = e^(−opponent xG).</p><div class="tw"><table><tr><th>Match</th><th>Kick-off (UTC)</th><th>xG</th><th>CS home</th><th>CS away</th><th>1 / X / 2</th></tr>'+
+ f.map(x=>'<tr><td>'+x.home+' v '+x.away+'</td><td>'+x.kickoff.slice(5,16).replace("T"," ")+'</td><td>'+n1(x.xg_home)+' – '+n1(x.xg_away)+'</td><td>'+Math.round(100*Math.exp(-x.xg_away))+'%</td><td>'+Math.round(100*Math.exp(-x.xg_home))+'%</td><td>'+x.odds_home+' / '+x.odds_draw+' / '+x.odds_away+'</td></tr>').join("")+'</table></div></div>'}
+function rNotes(){return '<div class="card"><h2>What this is, and what it is not</h2><ul>'+
+ '<li><b>Source:</b> FanTeam public API via the <code>season_pull</code> Action (ryanxib/epl.dfs). Entries: '+D.groups.map(g=>(LBL[g]||g)+" "+MY.filter(m=>m.grp===g).length).join(", ")+'. Squads loaded: '+E.length+'.</li>'+
+ '<li>Squads are the last finished round (GW'+D.squad_round+'). The current round is hidden until its deadline.</li>'+
+ '<li><b>Cash line</b> = lowest paid place now. It moves every week.</li>'+
+ '<li><b>Fixture ratings:</b> your EPL manager 1-5 ratings. Default set = calibrated on GW1-10 xG (starting from your 15 Aug set). You can edit a custom set in the Ratings tab (kept in this browser only). They drive the Fixture run and the Run column in Transfer impact.</li><li><b>No points projection yet.</b> Form is FanTeam\'s. The impact tool\'s edge is form × horizon unless you overwrite it. Treat the places figure as a rough size, not a forecast.</li>'+
+ '<li><b>Not confirmed:</b> sell-price rule (planner uses today\'s price), free-transfer roll-over, "transfer surplus 37".</li></ul></div>'}
+function render(){const a=document.getElementById("app");
+ a.innerHTML=({entries:rEntries,gaps:rGaps,impact:rImpact,ratings:rRatings,appeal:rAppeal,top:rTop,fixtures:rFix,notes:rNotes})[tab]();bindSel();bindRS();if(tab==="impact")bindImpact();if(tab==="ratings")bindRatings();if(tab==="appeal")bindAppeal()}
+load();
+</script>
+</body>
+</html>
